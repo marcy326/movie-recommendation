@@ -19,7 +19,7 @@ cd movie-recommendation
 3. Use Docker Compose to launch the application:
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 4. Access the application in your browser at the following URL:
