@@ -30,7 +30,7 @@ http://localhost:8501
 
 ## Usage
 1. Access the application in your browser.
-1. Enter the user_id and other paramters.
+1. Enter the user_id and other parameters.
 1. Click the "Get Recommendation" button to display recommended movies.
 
 
