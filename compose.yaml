@@ -23,7 +23,8 @@ services:
     volumes:
       - ./streamlit:/app
     environment:
-      - API_URL=http://192.168.1.3:8080/recommendations/
+      - USERBASE_API_URL=http://192.168.1.3:8080/recommendations/userbase
+      - ITEMBASE_API_URL=http://192.168.1.3:8080/recommendations/itembase
     working_dir: /app
     command: "streamlit run app.py"
     depends_on:

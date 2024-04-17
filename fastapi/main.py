@@ -12,16 +12,22 @@ app = FastAPI()
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 
-# データの読み込み
-def load_data_from_db():
+def load_movies_data_from_db():
     # moviesテーブルからデータを読み込む
     movies_query = 'SELECT * FROM movies'
     movies_data = pd.read_sql(movies_query, engine)
+    return movies_data
 
+def load_ratings_data_from_db():
     # ratingsテーブルからデータを読み込む
     ratings_query = 'SELECT * FROM ratings'
     ratings_data = pd.read_sql(ratings_query, engine)
+    return ratings_data
 
+# データの読み込み
+def load_data_from_db():
+    movies_data = load_movies_data_from_db()
+    ratings_data = load_ratings_data_from_db()
     return movies_data, ratings_data
 
 # データの前処理
@@ -67,8 +73,6 @@ def get_recommendations(df: pd.DataFrame, user_id: int, n: int = 5, k: int = 10)
     # 上位n個のアイテムを抽出して返す
     top_n_recommendations = recommendation_scores.sort_values(ascending=False).head(n)
 
-    # output = [{"number": i+1, "movie_id": idx, "recommendation_score": score/k} for i, (idx, score) in enumerate(top_n_recommendations.items())]
-    
     return top_n_recommendations
 
 def format_output(recommendations, movies_data, k):
@@ -78,9 +82,29 @@ def format_output(recommendations, movies_data, k):
         output.append({"number": i+1, "title": title, "recommendation_score": score/k})
     return output
 
+def calculate_item_similarity(ratings_matrix):
+    if os.path.exists("item_similarity.npy"):
+        item_similarity = np.load("item_similarity.npy")
+    else:
+        item_similarity = cosine_similarity(ratings_matrix.T)
+        np.save("item_similarity.npy", item_similarity)
+    return item_similarity
+
+def recommend_items(item_id, item_similarity_matrix, movie_titles, n=5):
+    similar_items = pd.Series(item_similarity_matrix[item_id]).sort_values(ascending=False)[1:n+1]
+    recommended_items = []
+    for i, (idx, similarity) in enumerate(similar_items.items(), 1):
+        movie_id = movie_titles.index[idx]
+        recommended_items.append({
+            "number": i,
+            "title": movie_titles.loc[movie_id],
+            "similarity": similarity,
+        })
+    return recommended_items
+
 # APIのエンドポイント
-@app.get('/recommendations')
-def recommendations(user_id: int = Query(1, description="The user ID"), n: int = Query(5, description="Number of recommendations"), k: int = Query(10, description="Number of similar users")):
+@app.get('/recommendations/userbase')
+def userbase_recommendations(user_id: int = Query(1, description="The user ID"), n: int = Query(5, description="Number of recommendations"), k: int = Query(10, description="Number of similar users")):
     # データの読み込み
     movies_data, ratings_data = load_data_from_db()
 
@@ -93,3 +117,23 @@ def recommendations(user_id: int = Query(1, description="The user ID"), n: int =
     output = format_output(recommendations, movies_data, k)
 
     return output
+
+# APIのエンドポイント
+@app.get('/recommendations/itembase')
+def itembase_recommendations(movie_id: int = Query(1, description="The Movie ID"), n: int = Query(5, description="Number of recommendations")):
+    # 類似度行列のファイルが存在すれば読み込む
+    if os.path.exists("item_similarity.npy"):
+        item_similarity = np.load("item_similarity.npy")
+    # ファイルが存在しなければ作成する
+    else:
+        ratings_df = load_ratings_data_from_db()
+        ratings_matrix = ratings_df.pivot_table(index='user_id', columns='movie_id', values='rating').fillna(0)
+        item_similarity = calculate_item_similarity(ratings_matrix)
+
+    # レーティングデータを読み込む
+    movies_df = load_movies_data_from_db()
+    movie_titles = movies_df.set_index("movie_id")["title"]
+    # 例として、アイテムIDが1の映画に対する推薦を行う
+    recommended_items = recommend_items(movie_id, item_similarity, movie_titles, n)
+
+    return recommended_items
